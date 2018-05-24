@@ -1018,7 +1018,7 @@
         clen = databaseCopy.collections.length;
         for (idx=0; idx<clen; idx++) {
           databaseCopy.collections[idx].constraints = null;
-          databaseCopy.collections[idx].ttl = null;
+          databaseCopy.collections[idx].ttlDaemon = null;  // [Alex]
         }
       }
 
@@ -1177,7 +1177,7 @@
       case 'autosaveHandle':
       case 'persistenceAdapter':
       case 'constraints':
-      case 'ttl':
+      case 'ttlDaemon':  // [Alex]
         return null;
       case 'throttledSavePending':
       case 'throttledCallbacks':
@@ -4763,12 +4763,22 @@
       this.serializableIndices = options.hasOwnProperty('serializableIndices') ? options.serializableIndices : true;
 
       //option to activate a cleaner daemon - clears "aged" documents at set intervals.
-      this.ttl = {
-        age: null,
-        ttlInterval: null,
+      //this.ttl = {
+      //  age: null,
+      //  ttlInterval: null,
+      //  daemon: null
+      //};
+      //this.setTTL(options.ttl || -1, options.ttlInterval);
+      
+      // [Alex]
+      this.ttl = options.hasOwnProperty('ttl') ? options.ttl : -1;
+      this.ttlInterval = options.hasOwnProperty('ttlInterval') ? options.ttlInterval : null;
+      this.ttlDaemon = {
+        age: this.ttl,
+        ttlInterval: this.ttlInterval,
         daemon: null
       };
-      this.setTTL(options.ttl || -1, options.ttlInterval);
+      this.setTTL(this.ttl, this.ttlInterval);
 
       // currentMaxId - change manually at your own peril!
       this.maxId = 0;
@@ -5076,13 +5086,13 @@
     +----------------------------*/
     Collection.prototype.ttlDaemonFuncGen = function () {
       var collection = this;
-      var age = this.ttl.age;
+      var age = this.ttl;
       return function ttlDaemon() {
         var now = Date.now();
         var toRemove = collection.chain().where(function daemonFilter(member) {
           var timestamp = member.meta.updated || member.meta.created;
           var diff = now - timestamp;
-          return age < diff;
+          return (age!=null && age < diff); // [Alex]
         });
         toRemove.remove();
       };
@@ -5095,12 +5105,12 @@
      * @memberof Collection
      */
     Collection.prototype.setTTL = function (age, interval) {
-      if (age < 0) {
-        clearInterval(this.ttl.daemon);
+      if (age==null || age<0) {  // [Alex]
+        clearInterval(this.ttlDaemon.daemon);
       } else {
-        this.ttl.age = age;
-        this.ttl.ttlInterval = interval;
-        this.ttl.daemon = setInterval(this.ttlDaemonFuncGen(), interval);
+        this.ttlDaemon.age = age;
+        this.ttlDaemon.ttlInterval = interval;
+        this.ttlDaemon.daemon = setInterval(this.ttlDaemonFuncGen(), interval);
       }
     };
 
